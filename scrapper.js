@@ -3,10 +3,19 @@ async function getPosts() {
     let feed = document.evaluate("//div[@role='feed']", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
     console.log("feed length: " + feed.children.length)
 	let result = [];
+	let lastPostNumber = 0;
+	let done = false;
+	let count = 0;
+	let firstPost = (await browser.storage.local.get("scrap_start")).scrap_start;
+	console.log("firstPost: " + firstPost)
+	console.log(firstPost);
 
-    for (let i = 1; i < feed.children.length && i < 10; i++) {
+    for (let i = firstPost; i < feed.children.length && count < 10; i++) {
+		count++;
         console.log("post " + i)
+		lastPostNumber = i;
         let post = feed.children[i]
+
         post.scrollIntoView()
 		await waitUntil(() => post.children.length)
 
@@ -46,15 +55,26 @@ async function getPosts() {
 
         if (!postLinkNode) {
             console.log("no post link found")
+			done = true;
             break
         }
 
         let date = getFirstText(postLinkNode)
-        let postLink = postLinkNode.attributes['href'].nodeValue
+        let postLink = postLinkNode.attributes['href'].nodeValue.split("?")[0]
 
-		let textNode = document.evaluate(".//div[text() != '']", post, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
-		while (textNode.nodeName.toLowerCase() != "span") {
+		console.log("looking for textNode")
+		let textNode = await waitUntil(() => {
+			return document.evaluate(".//div[text() != '']", post, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+		});
+		let initialTextNode = textNode;
+		console.log("initial textNode")
+		console.log(textNode)
+		while (textNode != null && textNode.nodeName.toLowerCase() != "span") {
+			console.log("textNode: " + textNode)
 			textNode = textNode.parentElement;
+		}
+		if (textNode == null) {
+			textNode = initialTextNode;
 		}
 		let text = textNode.textContent;
 
@@ -68,7 +88,7 @@ async function getPosts() {
 		})
     }
 
-	return result;
+	return {result: result, lastPostNumber: lastPostNumber, done: done};
 }
 
 async function waitUntil(func) {
@@ -129,7 +149,10 @@ function sleep(ms) {
 	var result = new Object();
 	try {
 		result.debug = "I'm alive!";
-		result.output = await getPosts();
+		let getPostsResult = await getPosts();
+		result.output = getPostsResult.result;
+		result.lastPostNumber = getPostsResult.lastPostNumber;
+		result.done = getPostsResult.done;
 	} catch (e) {
 		result.debug = e;
 	}
